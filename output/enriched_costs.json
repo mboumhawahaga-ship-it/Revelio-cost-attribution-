@@ -1,0 +1,47 @@
+[
+  {
+    "resource_id": "i-0abc123def456789a",
+    "service": "AmazonEC2",
+    "operation": "RunInstances",
+    "usage_start": "2024-01-01T00:00:00Z",
+    "usage_amount": 1.0,
+    "cost_usd": 0.0416,
+    "initiated_by": "alice@corp.com"
+  },
+  {
+    "resource_id": "i-0def456abc789012b",
+    "service": "AmazonEC2",
+    "operation": "RunInstances",
+    "usage_start": "2024-01-01T00:00:00Z",
+    "usage_amount": 1.0,
+    "cost_usd": 0.0832,
+    "initiated_by": "bob@corp.com"
+  },
+  {
+    "resource_id": "arn:aws:s3:::my-data-bucket",
+    "service": "AmazonS3",
+    "operation": "PutObject",
+    "usage_start": "2024-01-01T00:00:00Z",
+    "usage_amount": 5000.0,
+    "cost_usd": 0.0115,
+    "initiated_by": "alice@corp.com"
+  },
+  {
+    "resource_id": "arn:aws:rds:eu-west-1:123456789012:db:mydb",
+    "service": "AmazonRDS",
+    "operation": "CreateDBInstance",
+    "usage_start": "2024-01-01T00:00:00Z",
+    "usage_amount": 1.0,
+    "cost_usd": 0.019,
+    "initiated_by": "charlie@corp.com"
+  },
+  {
+    "resource_id": "arn:aws:lambda:eu-west-1:123456789012:function:my-function",
+    "service": "AWSLambda",
+    "operation": "Invoke",
+    "usage_start": "2024-01-01T01:00:00Z",
+    "usage_amount": 125000.0,
+    "cost_usd": 0.002,
+    "initiated_by": "bob@corp.com"
+  }
+]
