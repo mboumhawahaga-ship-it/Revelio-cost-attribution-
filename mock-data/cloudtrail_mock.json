@@ -1,0 +1,65 @@
+{
+  "Records": [
+    {
+      "eventTime": "2024-01-01T00:05:00Z",
+      "eventName": "RunInstances",
+      "eventSource": "ec2.amazonaws.com",
+      "userIdentity": {
+        "userName": "alice@corp.com"
+      },
+      "responseElements": {
+        "instancesSet": {
+          "items": [{"instanceId": "i-0abc123def456789a"}]
+        }
+      }
+    },
+    {
+      "eventTime": "2024-01-01T00:10:00Z",
+      "eventName": "RunInstances",
+      "eventSource": "ec2.amazonaws.com",
+      "userIdentity": {
+        "userName": "bob@corp.com"
+      },
+      "responseElements": {
+        "instancesSet": {
+          "items": [{"instanceId": "i-0def456abc789012b"}]
+        }
+      }
+    },
+    {
+      "eventTime": "2024-01-01T00:15:00Z",
+      "eventName": "PutObject",
+      "eventSource": "s3.amazonaws.com",
+      "userIdentity": {
+        "userName": "alice@corp.com"
+      },
+      "requestParameters": {
+        "bucketName": "my-data-bucket"
+      },
+      "responseElements": null
+    },
+    {
+      "eventTime": "2024-01-01T00:20:00Z",
+      "eventName": "CreateDBInstance",
+      "eventSource": "rds.amazonaws.com",
+      "userIdentity": {
+        "userName": "charlie@corp.com"
+      },
+      "responseElements": {
+        "dBInstanceArn": "arn:aws:rds:eu-west-1:123456789012:db:mydb"
+      }
+    },
+    {
+      "eventTime": "2024-01-01T01:05:00Z",
+      "eventName": "Invoke",
+      "eventSource": "lambda.amazonaws.com",
+      "userIdentity": {
+        "userName": "bob@corp.com"
+      },
+      "requestParameters": {
+        "functionName": "my-function"
+      },
+      "responseElements": null
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+lineItem/ResourceId,lineItem/ProductCode,lineItem/Operation,lineItem/UsageStartDate,lineItem/UsageAmount,lineItem/UnblendedCost
+i-0abc123def456789a,AmazonEC2,RunInstances,2024-01-01T00:00:00Z,1.0,0.0416
+i-0def456abc789012b,AmazonEC2,RunInstances,2024-01-01T00:00:00Z,1.0,0.0832
+arn:aws:s3:::my-data-bucket,AmazonS3,PutObject,2024-01-01T00:00:00Z,5000.0,0.0115
+arn:aws:rds:eu-west-1:123456789012:db:mydb,AmazonRDS,CreateDBInstance,2024-01-01T00:00:00Z,1.0,0.0190
+arn:aws:lambda:eu-west-1:123456789012:function:my-function,AWSLambda,Invoke,2024-01-01T01:00:00Z,125000.0,0.0020
