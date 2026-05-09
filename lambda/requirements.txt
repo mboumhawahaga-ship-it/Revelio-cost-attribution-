@@ -1,0 +1,1 @@
+# POC local — stdlib only, aucune dépendance externe
