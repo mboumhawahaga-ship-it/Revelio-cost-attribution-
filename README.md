@@ -80,6 +80,8 @@ Creates a historical, queryable dataset of:
 | **Shared Cost Leakage** | Unfair allocation from shared infra | fairness improvement |
 | **Cost per Identity** | spend per engineer / role | accountability |
 
+> **Estimated impact:** Recovers and attributes up to 30–60% of previously unallocated AWS spend ("dark cost") using CloudTrail + CUR correlation. Achieves identity-based cost attribution for >80% of infrastructure events via IAM and audit log reconstruction.
+
 ---
 
 ## 📊 Dashboard Preview
