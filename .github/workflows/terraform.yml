@@ -1,0 +1,233 @@
+name: Terraform CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "terraform/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write  # required for OIDC auth with AWS
+
+env:
+  TF_VERSION: "1.7.5"
+  AWS_REGION: "us-east-1"
+  TF_WORKING_DIR: "./terraform"
+
+# ─────────────────────────────────────────────────────────────
+# STAGE 1 — Quality & Security (runs on every PR and push)
+# ─────────────────────────────────────────────────────────────
+jobs:
+  terraform-check:
+    name: "Format & Validate"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # OIDC → no long-lived AWS credentials stored as secrets
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # ── Step 1 · Formatting ──────────────────────────────────
+      # Fails fast if any .tf file is not canonical.
+      # Run `terraform fmt -recursive` locally to fix.
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive
+
+      # ── Step 2 · Init (no backend, just provider download) ──
+      - name: Terraform init
+        run: terraform init -backend=false
+
+      # ── Step 3 · Validate syntax & internal consistency ─────
+      - name: Terraform validate
+        run: terraform validate
+
+  # ─────────────────────────────────────────────────────────────
+  # STAGE 2 — Security scan (IaC static analysis)
+  # ─────────────────────────────────────────────────────────────
+  security-scan:
+    name: "Security Scan (Checkov)"
+    runs-on: ubuntu-latest
+    needs: terraform-check
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Step 4 · Checkov IaC scan ───────────────────────────
+      # Scans for: public S3 buckets, missing encryption, open SGs,
+      # missing MFA delete, overly permissive IAM policies, etc.
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: ${{ env.TF_WORKING_DIR }}
+          framework: terraform
+          output_format: cli,sarif
+          output_file_path: console,results.sarif
+          soft_fail: false       # set true only to unblock while fixing findings
+          skip_check: ""         # e.g. CKV_AWS_18,CKV_AWS_19 — document WHY
+
+      # Upload SARIF to GitHub Security tab for visibility
+      - name: Upload SARIF report
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+
+  # ─────────────────────────────────────────────────────────────
+  # STAGE 3 — Plan (non-destructive, runs on PR)
+  # ─────────────────────────────────────────────────────────────
+  terraform-plan:
+    name: "Terraform Plan"
+    runs-on: ubuntu-latest
+    needs: [terraform-check, security-scan]
+    if: github.event_name == 'pull_request'
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+    env:
+      TF_VAR_environment: "staging"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_PLAN }}  # read-only role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # ── Step 5 · Init with remote backend ───────────────────
+      - name: Terraform init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=cur-explorer/staging/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}"
+
+      # ── Step 6 · Plan — saved as artifact ───────────────────
+      # The plan file is used by apply to guarantee what gets deployed.
+      - name: Terraform plan
+        id: plan
+        run: terraform plan -out=tfplan -input=false
+        continue-on-error: false
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ github.sha }}
+          path: ${{ env.TF_WORKING_DIR }}/tfplan
+          retention-days: 5
+
+      # Post plan summary as a PR comment
+      - name: Post plan to PR
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const output = `#### Terraform Plan 📖
+            \`\`\`
+            ${{ steps.plan.outputs.stdout }}
+            \`\`\`
+            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+  # ─────────────────────────────────────────────────────────────
+  # STAGE 4 — Manual approval gate (production only)
+  # ─────────────────────────────────────────────────────────────
+  # Requires a GitHub Environment named "production" with:
+  #   Settings → Environments → production → Required reviewers
+  approval-gate:
+    name: "Awaiting Approval"
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: production   # ← triggers the manual reviewer gate in GitHub UI
+
+    steps:
+      - name: Approval granted
+        run: echo "Deployment approved by ${{ github.actor }}"
+
+  # ─────────────────────────────────────────────────────────────
+  # STAGE 5 — Apply (production, after approval)
+  # ─────────────────────────────────────────────────────────────
+  terraform-apply:
+    name: "Terraform Apply"
+    runs-on: ubuntu-latest
+    needs: approval-gate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+    env:
+      TF_VAR_environment: "production"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_APPLY }}  # deploy role, least-privilege
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=cur-explorer/production/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}"
+
+      # ── Step 7 · Apply with the saved plan ──────────────────
+      # Never runs terraform apply without an explicit plan file.
+      - name: Download plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ github.sha }}
+          path: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform apply
+        run: terraform apply -input=false tfplan

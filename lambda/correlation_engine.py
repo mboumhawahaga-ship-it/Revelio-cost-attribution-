@@ -17,8 +17,12 @@ def _extract_resource_id(event: dict) -> str | None:
 
     if name == "Invoke":
         func = req.get("functionName")
-        # match the ARN prefix used in CUR
-        return f"arn:aws:lambda:eu-west-1:123456789012:function:{func}" if func else None
+        if not func:
+            return None
+        # Cherche l'ARN exact dans le CUR plutôt que de le hardcoder
+        # Le CUR contient : arn:aws:lambda:<region>:<account>:function:<name>
+        # On retourne juste le nom de fonction pour matcher via endswith
+        return func
 
     return None
 
@@ -39,6 +43,17 @@ def correlate(cur_rows: list[dict], cloudtrail_records: list[dict]) -> list[dict
     enriched = []
     for row in cur_rows:
         resource_id = row.get("lineItem/ResourceId", "")
+
+        # Lookup direct d'abord
+        owner = index.get(resource_id)
+
+        # Fallback : si resource_id est un ARN Lambda, on cherche par nom de fonction
+        # CUR stocke : arn:aws:lambda:<region>:<account>:function:<name>
+        # CloudTrail stocke : juste le nom de la fonction
+        if owner is None and ":function:" in resource_id:
+            func_name = resource_id.split(":function:")[-1]
+            owner = index.get(func_name)
+
         enriched.append({
             "resource_id": resource_id,
             "service": row.get("lineItem/ProductCode"),
@@ -46,6 +61,6 @@ def correlate(cur_rows: list[dict], cloudtrail_records: list[dict]) -> list[dict
             "usage_start": row.get("lineItem/UsageStartDate"),
             "usage_amount": float(row.get("lineItem/UsageAmount", 0)),
             "cost_usd": float(row.get("lineItem/UnblendedCost", 0)),
-            "initiated_by": index.get(resource_id, "not-found-in-cloudtrail"),
+            "initiated_by": owner or "not-found-in-cloudtrail",
         })
     return enriched
